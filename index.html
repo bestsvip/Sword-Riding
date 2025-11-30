@@ -137,7 +137,9 @@
             btn.innerText = "正在初始化...";
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { width: {ideal:640}, height: {ideal:480} } });
-                stream.getTracks().forEach(t => t.stop());
+                const video = document.getElementById('input-video');
+                video.srcObject = stream;
+                video.play();
                 document.getElementById('start-screen').style.display = 'none';
                 initThree();
                 initMediaPipe();
@@ -442,3 +444,6 @@
     </script>
 </body>
 </html>
+
+
+
