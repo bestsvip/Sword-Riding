@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>剑指画符</title>
-    <!-- 移除了不再需要的 camera_utils -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -12,17 +11,15 @@
     <style>
         :root { --paper-w: 330px; --paper-h: 580px; }
         
-        /* 修改1: 移除 body 的 flex 布局，防止因非法 DOM 元素导致的布局偏移 */
         body { 
             margin: 0; 
-            background: #111; 
+            background: #050505;
             height: 100vh; 
             overflow: hidden; 
             font-family: "KaiTi", serif; 
-            position: relative; /* 为绝对定位子元素提供参考 */
+            position: relative; 
         }
 
-        /* 修改2: 使用绝对定位强制居中 */
         #game-area { 
             position: absolute; 
             top: 50%; 
@@ -30,10 +27,7 @@
             width: var(--paper-w); 
             height: var(--paper-h); 
             perspective: 1000px; 
-            /* 使用 translate 抵消自身的 50% 宽高，实现完美居中 */
             transform: translate(-50%, -50%); 
-            /* 注意：因为这里使用了 transform，如果要对 #game-area 本身做动画，需要嵌套一层容器，
-               但原本的动画是作用在 #paper-layer 子元素上的，所以这里安全。 */
             z-index: 5;
         }
 
@@ -44,12 +38,6 @@
             box-shadow: 0 0 50px rgba(0,0,0,0.8);
             background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.2'/%3E%3C/svg%3E");
             border: 2px solid #d4a017;
-            -webkit-mask-image: linear-gradient(to top, transparent 45%, black 55%);
-            mask-image: linear-gradient(to top, transparent 45%, black 55%);
-            -webkit-mask-size: 100% 250%;
-            mask-size: 100% 250%;
-            -webkit-mask-position: 0% 0%;
-            mask-position: 0% 0%;
         }
 
         /* 2. 模板层 */
@@ -68,13 +56,13 @@
         /* 3. 笔迹与粒子 */
         canvas { position: absolute; inset: 0; pointer-events: none; }
         #ink-canvas { z-index: 3; }
-        #particle-canvas { z-index: 4; width: 150%; height: 150%; left: -25%; top: -25%; }
+        #particle-canvas { z-index: 4; width: 140%; height: 140%; left: -20%; top: -20%; }
 
         /* 动画特效 */
         .charging-anim {
             animation: shake 0.1s infinite;
-            box-shadow: 0 0 30px #ff4444 !important;
-            border-color: #ff4444 !important;
+            box-shadow: 0 0 40px #ff4400 !important;
+            border-color: #ff2200 !important;
         }
 
         @keyframes shake {
@@ -85,66 +73,31 @@
             100% { transform: rotate(0deg) translate(0,0); }
         }
 
-        .burn-anim {
-            -webkit-mask-image: linear-gradient(to top, transparent 45%, black 55%);
-            mask-image: linear-gradient(to top, transparent 45%, black 55%);
-            -webkit-mask-size: 100% 250%;
-            mask-size: 100% 250%;
-            animation: slowBurn 2.5s cubic-bezier(0.45, 0, 0.55, 1) forwards;
-        }
-
-        @keyframes slowBurn {
-            0% { -webkit-mask-position: 0% 0%; mask-position: 0% 0%; opacity: 1; }
-            100% { -webkit-mask-position: 0% 100%; mask-position: 0% 100%; opacity: 0; }
-        }
-
         /* UI */
         #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-        /* --- 修改重点 1：CSS 布局自适应 --- */
+        
         #cam-box { 
-            position: absolute; 
-            bottom: 60px; 
-            left: 20px; 
-            width: 240px; /* 固定宽度，高度自适应 */
-            height: auto; 
-            background: #000; 
-            border: 2px solid #444; 
-            border-radius: 8px; 
-            overflow: hidden; 
+            position: absolute; bottom: 60px; left: 20px; 
+            width: 240px; height: auto; 
+            background: #000; border: 2px solid #444; 
+            border-radius: 8px; overflow: hidden; 
             transition: border-color 0.3s;
-            /* Flex 布局保证内部元素对齐 */
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; justify-content: center;
         }
-
-        #cam-video { 
-            width: 100%; 
-            height: auto; 
-            display: block; /* 消除底部空隙 */
-            transform: scaleX(-1); 
-            opacity: 0.8; 
-        }
-
-        #cam-overlay { 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
-            transform: scaleX(-1); 
-            /* object-fit 效果由 canvas 分辨率匹配实现 */
-        }        
-        #status { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; font-size: 22px; text-shadow: 0 2px 4px #000; transition: color 0.3s; }
+        #cam-video { width: 100%; height: auto; display: block; transform: scaleX(-1); opacity: 0.8; }
+        #cam-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+        
+        #status { position: absolute; top: 30px; width: 100%; text-align: center; color: #fff; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px #ff0000; transition: color 0.3s; }
         #guide-hint { position: absolute; bottom: 10px; width: 100%; text-align: center; color: rgba(255,255,255,0.4); font-size: 14px; }
         
         #vanish-bar-box {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 220px; height: 8px; background: rgba(0,0,0,0.5); border-radius: 4px;
+            width: 220px; height: 10px; background: rgba(0,0,0,0.6); border-radius: 10px;
             opacity: 0; transition: opacity 0.3s;
-            overflow: hidden; border: 1px solid rgba(255,255,255,0.3);
+            overflow: hidden; border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 0 15px #ff4400;
         }
-        #vanish-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ff4444, #ff8800); border-radius: 4px; transition: width 0.05s linear; }
+        #vanish-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ff0000, #ffaa00, #ffffaa); border-radius: 10px; transition: width 0.05s linear; }
 
         #btn-toggle { position: absolute; bottom: 20px; left: 20px; width: 240px;pointer-events: auto; background: rgba(255,255,255,0.1); border: 1px solid #666; color: #ccc; padding: 5px 10px; cursor: pointer; }
     </style>
@@ -176,7 +129,7 @@
     </div>
 
     <script>
-        var decreeTime = 0.8
+        var decreeTime = 0.8 
 
         const TEMPLATES = [
             `<path d="M50,20 L250,20 M150,20 L150,100 M80,120 L220,120 M150,120 L150,200 M100,220 Q150,300 200,220 M150,250 L150,500 M120,400 L180,420 M180,400 L120,420" />`,
@@ -218,7 +171,6 @@
                 this.resize();
                 window.addEventListener('resize', () => this.resize());
                 
-                // 墨迹设置
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
                 this.ctx.strokeStyle = '#d93a3a';
@@ -229,7 +181,7 @@
                 this.particles = [];
                 this.isBurning = false;
                 this.burnStartTime = 0;
-                this.BURN_DURATION = 2800; // 燃烧持续时间
+                this.BURN_DURATION = 2800; 
                 
                 this.burnLayers = [this.paper, this.inkCanvas, this.tplLayer];
                 this.loop();
@@ -238,10 +190,8 @@
             resize() {
                 const r = this.paper.getBoundingClientRect();
                 this.inkCanvas.width = r.width; this.inkCanvas.height = r.height;
-                // 粒子画布更大，以容纳飘出的火焰
                 this.pCanvas.width = r.width * 1.4; this.pCanvas.height = r.height * 1.4;
                 
-                // 重置上下文
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
                 this.ctx.strokeStyle = '#d93a3a';
@@ -277,7 +227,7 @@
                     el.style.opacity = 1;
                 });
                 this.ctx.clearRect(0, 0, this.inkCanvas.width, this.inkCanvas.height);
-                this.particles = []; // 清空粒子
+                this.particles = [];
             }
 
             updateVanishBar(pct) {
@@ -297,16 +247,11 @@
                 else this.statusEl.style.textShadow = '0 0 10px #000';
             }
             
-            // --- 核心：真火粒子生成 ---
             spawnFireParticles(yPos, width) {
-                const count = 12; // 每帧生成的粒子数
-                // 坐标转换：从 GameArea 坐标转到 ParticleCanvas 坐标
-                // ParticleCanvas 偏移了 -20%, 宽高 140%
-                // offsetX = pCanvas.width * (20/140)
+                const count = 12; 
                 const offsetX = this.pCanvas.width * (0.2 / 1.4);
                 const offsetY = this.pCanvas.height * (0.2 / 1.4);
                 
-                // GameArea 高度对应比例
                 const scaleY = (this.pCanvas.height / 1.4) / 580; 
                 const spawnY = offsetY + yPos * scaleY;
                 
@@ -315,12 +260,6 @@
 
                 for(let i=0; i<count; i++) {
                     const r = Math.random();
-                    // 粒子类型分布：
-                    // 0.0 - 0.4: 主火焰 (大，橙红)
-                    // 0.4 - 0.6: 核心火焰 (亮黄白)
-                    // 0.6 - 0.9: 烟雾/热浪
-                    // 0.9 - 1.0: 火星 (极快，亮)
-
                     let p = {
                         x: offsetX + (Math.random() * gameW) * scaleX,
                         y: spawnY + (Math.random() * 20 - 10), 
@@ -337,20 +276,20 @@
                         p.vy = -Math.random() * 3 - 2;
                         p.size = Math.random() * 25 + 15;
                         p.life = Math.random() * 0.5 + 0.3;
-                        p.color = `255, ${Math.floor(Math.random()*100)}, 0`; // 橙红
-                    } else if (r < 0.7) { // 核心亮火
+                        p.color = `255, ${Math.floor(Math.random()*100)}, 0`;
+                    } else if (r < 0.7) { // 核心
                         p.type = 'core';
                         p.vy = -Math.random() * 4 - 3;
                         p.size = Math.random() * 20 + 10;
                         p.life = Math.random() * 0.4 + 0.2;
-                        p.color = `255, ${200 + Math.floor(Math.random()*55)}, 150`; // 白黄
-                    } else if (r < 0.9) { // 烟
+                        p.color = `255, ${200 + Math.floor(Math.random()*55)}, 150`;
+                    } else if (r < 0.9) { // 烟/热浪
                         p.type = 'smoke';
                         p.vx = (Math.random() - 0.5) * 3;
                         p.vy = -Math.random() * 2 - 1;
                         p.size = Math.random() * 30 + 10;
                         p.life = Math.random() * 0.8 + 0.4;
-                        p.color = '50, 50, 50'; // 黑灰
+                        p.color = '50, 50, 50';
                     } else { // 火星
                         p.type = 'spark';
                         p.vx = (Math.random() - 0.5) * 6;
@@ -364,50 +303,47 @@
             }
 
             loop() {
-                // 1. 清空画布
                 this.pCtx.clearRect(0, 0, this.pCanvas.width, this.pCanvas.height);
 
                 if (this.isBurning) {
                     const elapsed = Date.now() - this.burnStartTime;
                     const progress = Math.min(1, elapsed / this.BURN_DURATION);
                     
-                    // 计算燃烧线的位置 (从下 100% 往上 0%)
-                    // Mask logic: transparent at top, black at bottom. 
-                    // Gradient stop moves from 100% (all black) to 0% (all transparent)
-                    
+                    // 100 -> 0 (从下往上减少可见区域)
                     const burnYPct = 100 - (progress * 100); 
                     
-                    // 应用 Mask
+                    // --- 修正重点：使用 'to bottom' 渐变 ---
+                    // to bottom: 颜色从上往下绘制。
+                    // black 0% -> burnYPct% : 上半部分黑色（可见）
+                    // transparent burnYPct% -> ... : 下半部分透明（消失）
                     const maskCSS = `linear-gradient(to bottom, black ${burnYPct}%, transparent ${burnYPct}%)`;
+                    
                     this.burnLayers.forEach(el => {
                         el.style.webkitMaskImage = maskCSS;
                         el.style.maskImage = maskCSS;
                     });
-                    // 2. 生成火焰粒子
+
                     if (progress < 1.0) {
                         const gameH = 580;
+                        // 计算燃烧线的 Y 坐标（像素）
+                        // burnYPct = 100% -> Y = Bottom (580)
+                        // burnYPct = 0%   -> Y = Top (0)
                         const lineY = gameH * (burnYPct / 100);
                         this.spawnFireParticles(lineY, gameH);
                     } else {
-                        // 燃烧结束，等待粒子消失
-                        if (this.particles.length === 0) {
-                            // 彻底结束
-                        }
+                        if (this.particles.length === 0) {}
                     }
                 }
 
-                // 3. 渲染粒子 (真火核心渲染逻辑)
-                // 关键：使用 'lighter' (Additive Blending) 实现发光叠加
                 this.pCtx.globalCompositeOperation = 'lighter';
 
                 for (let i = 0; i < this.particles.length; i++) {
                     let p = this.particles[i];
                     
-                    // 物理更新
-                    p.x += p.vx + Math.sin(Date.now() * 0.01 + p.y * 0.02) * 0.5; // 湍流扰动
+                    p.x += p.vx + Math.sin(Date.now() * 0.01 + p.y * 0.02) * 0.5;
                     p.y += p.vy;
                     p.life -= 0.02;
-                    p.size *= 0.95; // 逐渐变小
+                    p.size *= 0.95;
 
                     if (p.life <= 0 || p.size < 0.5) {
                         this.particles.splice(i, 1);
@@ -415,36 +351,26 @@
                         continue;
                     }
 
-                    // 渲染逻辑
                     if (p.type === 'spark') {
-                        // 火星：画实心亮圆，带拖尾感
                         this.pCtx.fillStyle = `rgba(${p.color}, ${p.life})`;
                         this.pCtx.beginPath();
                         this.pCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
                         this.pCtx.fill();
                     } else if (p.type === 'smoke') {
-                        // 烟雾不需要高亮叠加，放到后面画，或者这里单独处理
-                        // 为了简单，这里烟也带一点光，或者我们可以切换 globalCompositeOperation
-                        // 但频繁切换影响性能。这里让烟雾也作为一种暗红热气处理
                         let alpha = p.life * 0.4;
                         this.createGradient(p, alpha);
                     } else {
-                        // 火焰和核心：使用径向渐变
                         let alpha = p.life;
                         if (p.type === 'core') alpha = p.life * 0.8;
                         this.createGradient(p, alpha);
                     }
                 }
                 
-                // 恢复默认混合模式
                 this.pCtx.globalCompositeOperation = 'source-over';
-                
                 requestAnimationFrame(() => this.loop());
             }
 
             createGradient(p, alpha) {
-                // 创建径向渐变：中心亮 -> 边缘透明
-                // 这模拟了火球的形态
                 try {
                     let grad = this.pCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
                     grad.addColorStop(0, `rgba(${p.color}, ${alpha})`);
@@ -458,18 +384,15 @@
                 } catch(e) {}
             }
         }
-       
+        
         class GestureBrain {
             constructor(renderer, tplSystem) {
                 this.r = renderer;
                 this.tpl = tplSystem;
                 this.state = 'IDLE'; 
-                this.drawStartTime = 0;
                 this.lastPos = null;
-                
                 this.vanishStartTime = 0;
                 this.VANISH_TRIGGER_TIME = decreeTime * 1000; 
-
                 this.palmHistory = [];
                 this.swipeCooldown = false;
             }
@@ -491,7 +414,7 @@
                 this.palmHistory = this.palmHistory.filter(h => now - h.time < 300);
                 if (this.palmHistory.length < 5) return;
                 const dx = this.palmHistory[this.palmHistory.length-1].x - this.palmHistory[0].x;
-                if (Math.abs(dx) > 0.2) {
+                if (Math.abs(dx) > 0.15) { 
                     if (dx > 0) { this.tpl.prev(); this.r.setStatus("<< 上一个"); }
                     else { this.tpl.next(); this.r.setStatus("下一个 >>"); }
                     this.swipeCooldown = true; this.palmHistory = [];
@@ -520,14 +443,17 @@
                     this.palmHistory = [];
                     if (this.state === 'IDLE') {
                         this.state = 'DRAWING';
-                        this.drawStartTime = Date.now();
                         this.lastPos = {x: cX, y: cY};
                         this.r.setStatus("画符中...", "#f0c239");
                     } else if (this.state === 'DRAWING') {
                         if (this.lastPos) {
-                            this.r.drawSegment(this.lastPos, {x: cX, y: cY});
+                            const smoothX = this.lastPos.x * 0.3 + cX * 0.7;
+                            const smoothY = this.lastPos.y * 0.3 + cY * 0.7;
+                            this.r.drawSegment(this.lastPos, {x: smoothX, y: smoothY});
+                            this.lastPos = {x: smoothX, y: smoothY};
+                        } else {
+                             this.lastPos = {x: cX, y: cY};
                         }
-                        this.lastPos = {x: cX, y: cY};
                     }
                 } else {
                     if (this.state === 'IDLE') this.detectSwipe(lm);
@@ -541,7 +467,6 @@
                 if (this.state !== 'DRAWING' && this.state !== 'WAITING_FOR_VANISH') return;
 
                 const now = Date.now();
-
                 if (this.state === 'DRAWING') {
                     this.state = 'WAITING_FOR_VANISH';
                     this.vanishStartTime = now;
@@ -553,7 +478,11 @@
                 
                 this.r.updateVanishBar(progress);
                 const sec = (decreeTime - elapsed/1000).toFixed(1);
-                this.r.setStatus(`敕符蓄力中... ${sec}s`, `rgba(255, ${100 + progress*155}, ${100}, 1)`);
+                
+                const r = 255;
+                const g = Math.floor(200 * (1 - progress));
+                const b = Math.floor(100 * (1 - progress));
+                this.r.setStatus(`敕符蓄力中... ${sec}s`, `rgb(${r}, ${g}, ${b})`);
 
                 if (elapsed >= this.VANISH_TRIGGER_TIME) {
                     this.triggerFinish();
@@ -563,8 +492,7 @@
             triggerFinish() {
                 this.state = 'COOLDOWN';
                 this.r.updateVanishBar(0);
-                this.r.setChargingState(false);
-                this.r.setStatus("急急如律令！敕！", "#ff0000");
+                this.r.setStatus("急急如律令！敕！", "#ff2200");
                 this.r.triggerBurn(); 
                 
                 setTimeout(() => {
@@ -593,68 +521,48 @@
             this.innerText = isSkeleton ? "切换: 骨骼模式" : "切换: 实景模式";
         };
 
-        function resizeOverlay() { overlayCanvas.width = camBox.offsetWidth; overlayCanvas.height = camBox.offsetHeight; }
-        window.addEventListener('resize', resizeOverlay);
-        resizeOverlay();
-
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
         hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
 
         hands.onResults(results => {
             overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
-                drawConnectors(overlayCtx, lm, HAND_CONNECTIONS, {color: 'rgba(255,255,255,0.4)', lineWidth: 1});
-                drawLandmarks(overlayCtx, lm, {color: '#fff', radius: 1});
-                
+                drawConnectors(overlayCtx, lm, HAND_CONNECTIONS, {color: 'rgba(255,255,255,0.4)', lineWidth: 2});
+                drawLandmarks(overlayCtx, lm, {color: '#fff', radius: 2});
                 brain.processHand(lm);
             } else {
                 brain.checkVanishing();
             }
         });
 
-        // --- 核心修改：使用 navigator.mediaDevices 替代 Camera 类 ---
-
         async function startCamera() {
             try {
-                // 获取摄像头流
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        facingMode: 'user' // 优先使用前置摄像头
-                    },
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
                     audio: false
                 });
-
                 videoEl.srcObject = stream;
-                
-                // 等待视频元数据加载完成后播放
                 videoEl.onloadedmetadata = () => {
                     videoEl.play();
-                    // 开始将视频帧送入 hands 处理的循环
-                    requestAnimationFrame(sendVideoFrame);
+                    overlayCanvas.width = videoEl.videoWidth;
+                    overlayCanvas.height = videoEl.videoHeight;
                     render.setStatus("系统就绪，请伸出剑指");
+                    requestAnimationFrame(sendVideoFrame);
                 };
-
             } catch (err) {
-                console.error("Camera access error:", err);
-                render.setStatus("绝地天通 — 无法访问摄像头", "red");
+                render.setStatus("绝地天通 - 摄像头访问失败", "red");
             }
         }
 
         async function sendVideoFrame() {
             if (!videoEl.paused && !videoEl.ended) {
-                // 将视频元素发送给 MediaPipe
                 await hands.send({image: videoEl});
             }
             requestAnimationFrame(sendVideoFrame);
         }
 
-        // 启动
         startCamera();
-
     </script>
 </body>
 </html>
