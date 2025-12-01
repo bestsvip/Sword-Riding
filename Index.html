@@ -3,442 +3,521 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>御剑飞行</title>
+    <title>剑指画符</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
     <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
-        
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        #input-video { position: absolute; top:0; left:0; opacity: 0; pointer-events: none; z-index: -1; }
+        :root { --paper-w: 330px; --paper-h: 580px; }
+        body { margin: 0; background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: "KaiTi", serif; }
 
-        /* HUD */
-        #hud-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-        .hud-panel {
-            position: absolute; left: 30px; top: 50%; transform: translateY(-50%);
-            display: flex; flex-direction: column; gap: 15px;
-            border-left: 2px solid rgba(0, 255, 170, 0.5); padding-left: 15px;
-        }
-        .hud-item { color: rgba(255, 255, 255, 0.9); font-size: 14px; text-shadow: 0 0 5px #00ffaa; }
-        .hud-value { font-size: 24px; font-weight: bold; color: #00ffaa; font-family: monospace; }
-        .hud-label { font-size: 10px; color: #aaa; letter-spacing: 1px; }
+        #game-area { position: relative; width: var(--paper-w); height: var(--paper-h); perspective: 1000px; transition: transform 0.1s; }
 
-        /* 顶部栏 */
-        .top-bar {
-            position: absolute; top: 20px; left: 0; width: 100%;
-            display: flex; justify-content: space-between; padding: 0 40px; box-sizing: border-box; pointer-events: auto;
-        }
-        .status-main { font-size: 22px; font-weight: bold; color: #fff; text-shadow: 0 0 10px #00ffaa; }
-        .status-sub { font-size: 14px; color: #00ffaa; margin-top: 5px; }
-
-        .control-btn {
-            background: rgba(0, 30, 40, 0.8); border: 1px solid #00ffaa; color: #00ffaa;
-            padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: 0.2s;
-        }
-        .control-btn:hover { background: #00ffaa; color: #000; }
-
-        /* 准星 */
-        #crosshair-container {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 100px; height: 100px; display: flex; justify-content: center; align-items: center;
-        }
-        #crosshair {
-            width: 40px; height: 40px; border: 2px dashed rgba(255,255,255,0.6); border-radius: 50%;
-            transition: all 0.2s; position: absolute;
+        /* 1. 符纸层 */
+        #paper-layer {
+            position: absolute; inset: 0; z-index: 1;
+            background: #f0c239;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.2'/%3E%3C/svg%3E");
+            border: 2px solid #d4a017;
+            -webkit-mask-image: linear-gradient(to top, transparent 45%, black 55%);
+            mask-image: linear-gradient(to top, transparent 45%, black 55%);
+            -webkit-mask-size: 100% 250%;
+            mask-size: 100% 250%;
+            -webkit-mask-position: 0% 0%;
+            mask-position: 0% 0%;
         }
 
-        /* 调试窗口 */
-        #debug-wrapper {
-            position: absolute; bottom: 20px; left: 20px; z-index: 20; pointer-events: auto;
-        }
-        #debug-view {
-            width: 280px; height: auto; background: #000; border: 1px solid #333; border-radius: 6px; transform: scaleX(-1); display: block;
-        }
-
-        /* 启动页 */
-        #start-screen {
+        /* 2. 模板层 */
+        #template-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.95); z-index: 100;
-            display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto;
+            z-index: 2; pointer-events: none;
+            display: flex; justify-content: center; align-items: center;
         }
-        #start-btn {
-            padding: 15px 50px; font-size: 22px; border: 2px solid #00ffaa;
-            background: transparent; color: #00ffaa; border-radius: 50px;
-            cursor: pointer; transition: 0.3s; box-shadow: 0 0 20px rgba(0,255,170,0.2);
+        .tpl-item { position: absolute; width: 80%; height: 80%; transition: all 0.4s ease; opacity: 0; }
+        .tpl-item svg { width: 100%; height: 100%; fill: none; stroke: rgba(255, 255, 255, 0.25); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+        .tpl-center { transform: translateX(0) scale(1); opacity: 1; z-index: 10; }
+        .tpl-left   { transform: translateX(-120%) scale(0.8); opacity: 0.3; }
+        .tpl-right  { transform: translateX(120%) scale(0.8); opacity: 0.3; }
+        .tpl-hidden { transform: scale(0.5); opacity: 0; }
+
+        /* 3. 笔迹与粒子 */
+        canvas { position: absolute; inset: 0; pointer-events: none; }
+        #ink-canvas { z-index: 3; }
+        #particle-canvas { z-index: 4; width: 150%; height: 150%; left: -25%; top: -25%; }
+
+        /* 动画特效 */
+        .charging-anim {
+            animation: shake 0.1s infinite;
+            box-shadow: 0 0 30px #ff4444 !important;
+            border-color: #ff4444 !important;
         }
-        #start-btn:hover { background: #00ffaa; color: #000; box-shadow: 0 0 40px #00ffaa; }
-        .key-point { color: #fff; font-weight: bold; }
+
+        @keyframes shake {
+            0% { transform: rotate(0deg) translate(0,0); }
+            25% { transform: rotate(0.5deg) translate(1px, 1px); }
+            50% { transform: rotate(0deg) translate(0,0); }
+            75% { transform: rotate(-0.5deg) translate(-1px, -1px); }
+            100% { transform: rotate(0deg) translate(0,0); }
+        }
+
+        .burn-anim {
+            -webkit-mask-image: linear-gradient(to top, transparent 45%, black 55%);
+            mask-image: linear-gradient(to top, transparent 45%, black 55%);
+            -webkit-mask-size: 100% 250%;
+            mask-size: 100% 250%;
+            animation: slowBurn 2.5s cubic-bezier(0.45, 0, 0.55, 1) forwards;
+        }
+
+        @keyframes slowBurn {
+            0% { -webkit-mask-position: 0% 0%; mask-position: 0% 0%; opacity: 1; }
+            100% { -webkit-mask-position: 0% 100%; mask-position: 0% 100%; opacity: 0; }
+        }
+
+        /* UI */
+        #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+        #cam-box { position: absolute; bottom: 60px; left: 20px; width: 240px; height: 180px; background: #000; border: 2px solid #444; border-radius: 8px; overflow: hidden; transition: 0.3s; }
+        #cam-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.8; }
+        #cam-overlay { position: absolute; inset: 0; transform: scaleX(-1); }
+        
+        #status { position: absolute; top: 10px; width: 100%; text-align: center; color: #fff; font-size: 22px; text-shadow: 0 2px 4px #000; transition: color 0.3s; }
+        #guide-hint { position: absolute; bottom: 10px; width: 100%; text-align: center; color: rgba(255,255,255,0.4); font-size: 14px; }
+        
+        #vanish-bar-box {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 220px; height: 8px; background: rgba(0,0,0,0.5); border-radius: 4px;
+            opacity: 0; transition: opacity 0.3s;
+            overflow: hidden; border: 1px solid rgba(255,255,255,0.3);
+        }
+        #vanish-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ff4444, #ff8800); border-radius: 4px; transition: width 0.05s linear; }
+
+        #btn-toggle { position: absolute; bottom: 20px; left: 20px; width: 240px;pointer-events: auto; background: rgba(255,255,255,0.1); border: 1px solid #666; color: #ccc; padding: 5px 10px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <div id="start-screen">
-        <button id="start-btn" onclick="startApp()">⚡ 御剑飞行</button>
-        <div style="margin-top:30px; color:#ccc; font-size:14px; text-align:center; line-height:1.8;">
-            <div>✋ <span class="key-point">单手</span>：位置/高度跟随</div>
-            <div>👐 <span class="key-point">双手</span>：姿态控制 (推拉转向/高低升降)</div>
-            <div style="color:#00ffaa; margin-top:10px;">★ 剑指（食指+中指）对准摄像头</div>
+    <div id="game-area">
+        <div id="paper-layer"></div>
+        <div id="template-layer">
+            <div class="tpl-item" id="tpl-0"></div>
+            <div class="tpl-item" id="tpl-1"></div>
+            <div class="tpl-item" id="tpl-2"></div>
         </div>
+        <canvas id="ink-canvas"></canvas>
+        <canvas id="particle-canvas"></canvas>
+        <div id="vanish-bar-box"><div id="vanish-fill"></div></div>
     </div>
 
-    <div id="canvas-container"></div>
-    <video id="input-video" width="640" height="480" playsinline></video>
-
-    <!-- HUD -->
-    <div id="hud-layer">
-        <div class="top-bar">
-            <div>
-                <div class="status-main">御剑飞行</div>
-                <div class="status-sub" id="mode-text">系统待机</div>
-            </div>
-            <div style="display:flex; gap:10px;">
-                <button class="control-btn" onclick="document.getElementById('file-input').click()">📤 换剑</button>
-                <button class="control-btn" onclick="resetSword()">↺ 重置</button>
-            </div>
+    <div id="ui-layer">
+        <button id="btn-toggle">切换: 实景模式</button>
+        <div id="status">系统初始化中...</div>
+        <div id="guide-hint">🖐️ 左右挥手切换模板 | ✌️ 剑指入摄像头内开始画符<br>
+            <!-- 画完后将手移出画面即可敕符 -->
+            画完后将手快速移向摄像头
         </div>
-
-        <div class="hud-panel">
-            <div class="hud-item">
-                <div class="hud-label">ALT (海拔)</div>
-                <div class="hud-value" id="hud-alt">3000</div>
-            </div>
-            <div class="hud-item">
-                <div class="hud-label">V.SPD (垂直速度)</div>
-                <div class="hud-value" id="hud-vspeed">0</div>
-            </div>
-            <div class="hud-item">
-                <div class="hud-label">HDG (航向)</div>
-                <div class="hud-value" id="hud-yaw">0°</div>
-            </div>
-        </div>
-
-        <div id="crosshair-container">
-            <div id="crosshair"></div>
+        <div id="cam-box">
+            <video id="cam-video" playsinline></video>
+            <canvas id="cam-overlay"></canvas>
         </div>
     </div>
-
-    <div id="debug-wrapper">
-        <canvas id="debug-view"></canvas>
-        <button class="control-btn" style="width:100%; margin-top:5px;" onclick="toggleCameraView()">👁️ 切换实景/线框</button>
-    </div>
-
-    <input type="file" id="file-input" accept=".glb,.gltf" style="display:none">
-
-    <!-- 库 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
     <script>
-        // --- 启动 ---
-        async function startApp() {
-            const btn = document.getElementById('start-btn');
-            btn.innerText = "正在初始化...";
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: {ideal:640}, height: {ideal:480} } });
-                stream.getTracks().forEach(t => t.stop());
-                document.getElementById('start-screen').style.display = 'none';
-                initThree();
-                initMediaPipe();
-            } catch (e) {
-                console.error(e);
-                alert("摄像头启动失败，请检查HTTPS或Localhost");
+        // 敕令时间
+        var decreeTime = 0.8
+
+        const TEMPLATES = [
+            `<path d="M50,20 L250,20 M150,20 L150,100 M80,120 L220,120 M150,120 L150,200 M100,220 Q150,300 200,220 M150,250 L150,500 M120,400 L180,420 M180,400 L120,420" />`,
+            `<path d="M150,30 L150,550 M100,50 L200,50 M100,500 L200,500 M80,150 L220,150 M100,150 Q50,300 100,450 M200,150 Q250,300 200,450 M130,250 L170,250 L170,350 L130,350 Z" />`,
+            `<path d="M150,20 L150,560 M120,50 L180,60 M120,100 L180,110 M120,150 L180,160 M100,200 L200,200 M150,200 Q250,300 150,400 Q50,300 150,200 M150,400 L120,550 M150,400 L180,550" />`
+        ];
+
+        class TemplateSystem {
+            constructor() {
+                this.idx = 0;
+                this.els = [document.getElementById('tpl-0'), document.getElementById('tpl-1'), document.getElementById('tpl-2')];
+                this.els.forEach((el, i) => el.innerHTML = `<svg viewBox="0 0 300 600">${TEMPLATES[i]}</svg>`);
+                this.update();
+            }
+            next() { this.idx = (this.idx + 1) % 3; this.update(); }
+            prev() { this.idx = (this.idx - 1 + 3) % 3; this.update(); }
+            update() {
+                const prev = (this.idx - 1 + 3) % 3;
+                const next = (this.idx + 1) % 3;
+                this.els.forEach(el => el.className = 'tpl-item tpl-hidden');
+                this.els[this.idx].className = 'tpl-item tpl-center';
+                this.els[prev].className = 'tpl-item tpl-left';
+                this.els[next].className = 'tpl-item tpl-right';
             }
         }
 
-        // --- 参数 ---
-        const CONFIG = {
-            flySpeed: 1.5,
-            singleSpeed: 0.1,
-            turnSpeed: 0.05,
-            limitX: 20,
-            limitY: 12,
-            baseAltitude: 3000
-        };
+        class RenderSystem {
+            constructor() {
+                this.inkCanvas = document.getElementById('ink-canvas');
+                this.ctx = this.inkCanvas.getContext('2d');
+                this.pCanvas = document.getElementById('particle-canvas');
+                this.pCtx = this.pCanvas.getContext('2d');
+                this.paper = document.getElementById('paper-layer');
+                this.tplLayer = document.getElementById('template-layer');
+                this.statusEl = document.getElementById('status');
+                this.vanishBox = document.getElementById('vanish-bar-box');
+                this.vanishFill = document.getElementById('vanish-fill');
+                
+                this.particles = [];
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.strokeStyle = '#c92a2a';
+                this.ctx.lineWidth = 6;
 
-        // --- 状态 ---
-        let control = { mode: 'IDLE', active: false, targetX: 0, targetY: 0, yawInput: 0, pitchInput: 0, rollInput: 0 };
-        let flight = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, altitude: CONFIG.baseAltitude };
-        let showRealCamera = false;
+                this.particles = [];
+                this.isBurning = false;
+                this.burnStartTime = 0;
+                this.BURN_DURATION = ( decreeTime + 0.2 )* 1000;
+                // // 需要燃烧的层
+                // this.burnLayers = [
+                //     document.getElementById('paper-layer'),
+                //     document.getElementById('template-layer'),
+                //     this.inkCanvas
+                // ];
 
-        // --- Three.js ---
-        let scene, camera, renderer, swordGroup, terrainMesh;
+                // 启动粒子循环
+                this.loop();
 
-        function initThree() {
-            const container = document.getElementById('canvas-container');
-            scene = new THREE.Scene();
-            // 修复1: 雾效大幅减弱，让远处山脉可见
-            scene.fog = new THREE.FogExp2(0x0a1525, 0.002); 
-            scene.background = new THREE.Color(0x0a1525);
-
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000); // 远视距加大
-            camera.position.set(0, 6, 20);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
-            container.appendChild(renderer.domElement);
-
-            scene.add(new THREE.AmbientLight(0x404040, 2));
-            const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-            sun.position.set(50, 200, 100);
-            sun.castShadow = true;
-            scene.add(sun);
-
-            createSevenStarSword();
-            createTerrain();
-            animate();
-
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
-        }
-
-        // --- 默认剑模型 ---
-        function createSevenStarSword() {
-            if (swordGroup) scene.remove(swordGroup);
-            swordGroup = new THREE.Group();
-
-            const bladeGeo = new THREE.ConeGeometry(0.6, 12, 4); 
-            const bladeMat = new THREE.MeshStandardMaterial({ 
-                color: 0xe0ffff, metalness: 0.9, roughness: 0.1, 
-                emissive: 0x00ffff, emissiveIntensity: 0.4 
-            });
-            const blade = new THREE.Mesh(bladeGeo, bladeMat);
-            blade.scale.set(1, 1, 0.15); 
-            blade.rotation.x = Math.PI / 2; // 朝向 -Z
-            blade.position.z = -1;
-            swordGroup.add(blade);
-
-            const guard = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.2, 0.5), new THREE.MeshStandardMaterial({color:0xffaa00, metalness:1}));
-            guard.position.z = 4.5;
-            const w1 = guard.clone(); w1.rotation.z = 0.4; w1.scale.set(0.6,1,1); w1.position.set(-1.2,0,4.5);
-            const w2 = guard.clone(); w2.rotation.z = -0.4; w2.scale.set(0.6,1,1); w2.position.set(1.2,0,4.5);
-            swordGroup.add(guard); swordGroup.add(w1); swordGroup.add(w2);
-
-            const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 3, 8), new THREE.MeshStandardMaterial({color:0x222222}));
-            hilt.rotation.x = Math.PI / 2; hilt.position.z = 6;
-            swordGroup.add(hilt);
-
-            for(let i=0; i<7; i++){
-                const star = new THREE.Mesh(new THREE.SphereGeometry(0.08), new THREE.MeshBasicMaterial({color:0x00ffaa}));
-                star.position.set(0, 0.06, 3.5 - i*0.9);
-                swordGroup.add(star);
             }
-            scene.add(swordGroup);
-        }
 
-        // --- 地形 (修复：提高可见度与起伏) ---
-        function createTerrain() {
-            // 加大尺寸 800x800
-            const geometry = new THREE.PlaneGeometry(800, 800, 128, 128);
-            const material = new THREE.ShaderMaterial({
-                uniforms: { time: { value: 0 }, altitude: { value: 1.0 } },
-                vertexShader: `
-                    uniform float time; uniform float altitude; varying float vH;
-                    float hash(vec2 p) { return fract(1e4 * sin(17.0 * p.x + p.y * 0.1) * (0.1 + abs(sin(p.y * 13.0 + p.x)))); }
-                    float noise(vec2 x) {
-                        vec2 i = floor(x); vec2 f = fract(x);
-                        float a = hash(i); float b = hash(i + vec2(1.0, 0.0));
-                        float c = hash(i + vec2(0.0, 1.0)); float d = hash(i + vec2(1.0, 1.0));
-                        vec2 u = f * f * (3.0 - 2.0 * f);
-                        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-                    }
-                    void main() {
-                        vec3 pos = position;
-                        // 修复: 保持一定的纹理缩放，避免太模糊
-                        float scale = 0.015; 
-                        float move = time * 1.5;
-                        
-                        // 修复: 增加振幅到 140，让山更像山
-                        float h = noise(pos.xy * scale + vec2(0, -move)) * 140.0;
-                        
-                        // 增加细节层
-                        h += noise(pos.xy * scale * 4.0 + vec2(0, -move)) * 20.0;
-
-                        pos.z = h; vH = h;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-                    }
-                `,
-                fragmentShader: `
-                    varying float vH;
-                    void main() {
-                        // 颜色分层：深谷 -> 山腰 -> 雪顶
-                        vec3 col = mix(vec3(0.05, 0.1, 0.15), vec3(0.3, 0.4, 0.5), smoothstep(0.0, 60.0, vH));
-                        col = mix(col, vec3(0.9, 0.95, 1.0), smoothstep(100.0, 140.0, vH));
-                        
-                        // 雾效混合
-                        float fog = smoothstep(200.0, 700.0, gl_FragCoord.z / gl_FragCoord.w);
-                        gl_FragColor = vec4(mix(col, vec3(0.04, 0.08, 0.15), fog), 1.0);
-                    }
-                `,
-                side: THREE.DoubleSide
-            });
-            terrainMesh = new THREE.Mesh(geometry, material);
-            terrainMesh.rotation.x = -Math.PI / 2;
-            terrainMesh.position.y = -80; // 地面位置
-            scene.add(terrainMesh);
-        }
-
-        // --- MediaPipe ---
-        const debugCanvas = document.getElementById('debug-view');
-        const ctx = debugCanvas.getContext('2d');
-        const modeText = document.getElementById('mode-text');
-        const crosshair = document.getElementById('crosshair');
-
-        function toggleCameraView() { showRealCamera = !showRealCamera; }
-        function isSwordFinger(h) { return h[8].y < h[5].y; }
-
-        function initMediaPipe() {
-            const video = document.getElementById('input-video');
-            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-            hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-            hands.onResults(onResults);
-            const cam = new Camera(video, { onFrame: async () => { await hands.send({image: video}); }, width: 640, height: 480 });
-            cam.start();
-        }
-
-        function onResults(results) {
-            if (debugCanvas.width !== results.image.width) {
-                debugCanvas.width = results.image.width; debugCanvas.height = results.image.height;
+            resize() {
+                const r = this.paper.getBoundingClientRect();
+                this.inkCanvas.width = r.width; this.inkCanvas.height = r.height;
+                this.pCanvas.width = r.width * decreeTime; this.pCanvas.height = r.height * decreeTime;
             }
-            ctx.save();
-            if(showRealCamera) ctx.drawImage(results.image, 0, 0);
-            else { ctx.fillStyle="#000"; ctx.fillRect(0,0,debugCanvas.width,debugCanvas.height); }
 
-            const lands = results.multiHandLandmarks;
+            drawSegment(p1, p2) {
+                if (!p1 || !p2) return; // 防止空指针报错
+                this.ctx.beginPath();
+                this.ctx.moveTo(p1.x, p1.y);
+                this.ctx.quadraticCurveTo((p1.x + p2.x)/2, (p1.y + p2.y)/2, p2.x, p2.y);
+                this.ctx.stroke();
+            }
 
-            if (!lands || lands.length === 0) {
-                // 关键修复：当没有手势时，不改变 flight 数据，保持惯性
-                // 仅更新 UI 状态
-                control.active = false;
-                modeText.innerText = "姿态保持中 (无信号)";
-                modeText.style.color = "#888";
-                crosshair.style.borderColor = "rgba(255,255,255,0.3)";
-            } 
-            else if (lands.length === 1) {
-                control.mode = 'SINGLE'; control.active = true;
-                const h = lands[0];
-                drawConnectors(ctx, h, HAND_CONNECTIONS, {color:'#00aaff', lineWidth:3});
-                if(isSwordFinger(h)) {
-                    modeText.innerText = "单手跟随"; modeText.style.color = "#00aaff";
-                    control.targetX = (h[9].x - 0.5) * CONFIG.limitX * 2.0;
-                    control.targetY = (0.5 - h[9].y) * CONFIG.limitY * 2.0;
+            setChargingState(active) {
+                if (active) this.paper.classList.add('charging-anim');
+                else this.paper.classList.remove('charging-anim');
+            }
+
+            triggerBurn() {
+                this.setChargingState(false);
+                this.paper.classList.add('burn-anim');
+                this.inkCanvas.classList.add('burn-anim');
+                this.tplLayer.classList.add('burn-anim');
+                this.spawnAshParticles();
+            }
+
+            resetBurn() {
+                [this.paper, this.inkCanvas, this.tplLayer].forEach(el => {
+                    el.classList.remove('burn-anim');
+                    void el.offsetWidth; // 触发重绘
+                    el.style.opacity = 1;
+                });
+                this.ctx.clearRect(0, 0, this.inkCanvas.width, this.inkCanvas.height);
+            }
+
+            spawnAshParticles() {
+                let spawnedCount = 0;
+                const totalParticles = 600;
+                const interval = setInterval(() => {
+                    for(let i=0; i<8; i++) {
+                        this.particles.push({
+                            x: Math.random() * this.pCanvas.width,
+                            y: this.pCanvas.height + Math.random() * 50, 
+                            vx: (Math.random() - 0.5) * 3,
+                            vy: -Math.random() * 3 - 2,
+                            life: 1.0,
+                            size: Math.random() * 8 + 2,
+                            color: Math.random() > 0.6 ? '#c92a2a' : (Math.random() > 0.4 ? '#ff8800' : '#111')
+                        });
+                    }
+                    spawnedCount += 8;
+                    if(spawnedCount >= totalParticles) clearInterval(interval);
+                }, 30); 
+                this.animateParticles();
+            }
+
+            animateParticles() {
+                if(this.particles.length === 0) return;
+                this.pCtx.clearRect(0, 0, this.pCanvas.width, this.pCanvas.height);
+                for(let i=0; i<this.particles.length; i++) {
+                    let p = this.particles[i];
+                    p.x += p.vx + Math.sin(p.y * 0.01) * 1; 
+                    p.y += p.vy; 
+                    p.life -= 0.01; 
+                    p.size *= 0.98;
+                    this.pCtx.save();
+                    this.pCtx.globalAlpha = p.life;
+                    this.pCtx.fillStyle = p.color;
+                    this.pCtx.beginPath();
+                    this.pCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+                    this.pCtx.fill();
+                    this.pCtx.restore();
+                    if(p.life <= 0) { this.particles.splice(i, 1); i--; }
                 }
+                requestAnimationFrame(() => this.animateParticles());
             }
-            else if (lands.length === 2) {
-                control.mode = 'DUAL'; control.active = true;
-                const sorted = lands.map(h=>h).sort((a,b)=>a[9].x - b[9].x);
-                drawConnectors(ctx, sorted[0], HAND_CONNECTIONS, {color:'#00ffaa', lineWidth:3});
-                drawConnectors(ctx, sorted[1], HAND_CONNECTIONS, {color:'#00ffaa', lineWidth:3});
 
-                if(isSwordFinger(sorted[0]) && isSwordFinger(sorted[1])) {
-                    modeText.innerText = "双手御剑"; modeText.style.color = "#00ffaa";
-                    const h1=sorted[0], h2=sorted[1];
-                    
-                    // 转向
-                    const zDiff = h2[9].z - h1[9].z;
-                    control.yawInput = -zDiff * 4.0;
-                    
-                    // 翻滚
-                    const yDiff = h2[9].y - h1[9].y;
-                    const slope = Math.atan2(yDiff, h2[9].x - h1[9].x);
-                    control.rollInput = slope * 1.5;
-
-                    // 升降
-                    const avgY = (h1[9].y + h2[9].y) / 2;
-                    if(avgY < 0.4) control.pitchInput = -(0.4 - avgY) * 5.0; // 抬头
-                    else if(avgY > 0.6) control.pitchInput = (avgY - 0.6) * 5.0; // 低头
-                    else control.pitchInput = 0;
-                }
-            }
-            ctx.restore();
-        }
-
-        // --- 动画循环 ---
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // 只有当检测到手势且激活时，才更新 flight 姿态
-            if (control.active) {
-                if (control.mode === 'SINGLE') {
-                    // 单手逻辑
-                    flight.x += (control.targetX - flight.x) * CONFIG.singleSpeed;
-                    flight.y += (control.targetY - flight.y) * CONFIG.singleSpeed;
-                    flight.pitch = (flight.y - control.targetY) * 0.05;
-                    flight.roll = (flight.x - control.targetX) * 0.05;
-                    flight.yaw *= 0.9; 
-                    flight.altitude = CONFIG.baseAltitude + flight.y * 100;
-                } 
-                else if (control.mode === 'DUAL') {
-                    // 双手逻辑
-                    flight.yaw -= control.yawInput * CONFIG.turnSpeed;
-                    flight.pitch += (control.pitchInput - flight.pitch) * 0.1;
-                    flight.roll += (control.rollInput - flight.roll) * 0.1;
-                    
-                    flight.x = -flight.yaw * 3;
-                    flight.y -= flight.pitch * 0.5;
+            updateVanishBar(pct) {
+                if(pct > 0) {
+                    this.vanishBox.style.opacity = 1;
+                    this.vanishFill.style.width = `${pct * 100}%`;
+                } else {
+                    this.vanishBox.style.opacity = 0;
+                    this.vanishFill.style.width = '0%';
                 }
             }
             
-            // 修复关键：无论有没有手势，高度都必须根据当前的 Pitch 继续更新
-            // 如果手松开了，Pitch 保持在非零值，那么飞剑应该继续上升/下降
-            if (control.mode === 'DUAL' || !control.active) {
-                flight.altitude -= flight.pitch * 15;
+            setStatus(text, color='#fff') { this.statusEl.innerText = text; this.statusEl.style.color = color; }
+                        // 每一帧的循环
+            loop() {
+                this.pCtx.clearRect(0, 0, this.pCanvas.width, this.pCanvas.height);
+
+                // 1. 处理燃烧
+                if (this.isBurning) {
+                    const elapsed = Date.now() - this.burnStartTime;
+                    const progress = Math.min(1, elapsed / this.BURN_DURATION);
+                    
+                    // 计算燃烧线的位置 (从下 100% 往上 0%)
+                    // Mask logic: transparent at top, black at bottom. 
+                    // Gradient stop moves from 100% (all black) to 0% (all transparent)
+                    
+                    const burnYPct = 100 - (progress * 100); 
+                    
+                    // 应用 Mask
+                    const maskCSS = `linear-gradient(to top, black ${burnYPct}%, transparent ${burnYPct + 10}%)`;
+                    this.burnLayers.forEach(el => {
+                        el.style.webkitMaskImage = maskCSS;
+                        el.style.maskImage = maskCSS;
+                    });
+
+                    // 2. 在燃烧线上生成粒子
+                    // 燃烧线在 Canvas 中的实际 Y 坐标 (注意粒子Canvas有偏移)
+                    // GameArea 高度 580. 粒子 Canvas top -100.
+                    // 燃烧线 Y (相对于 GameArea) = 580 * (burnYPct / 100)
+                    const gameAreaH = this.inkCanvas.height;
+                    const burnLineY_Game = gameAreaH * (burnYPct / 100);
+                    
+                    // 映射到粒子 Canvas 坐标 (加偏移 100)
+                    const spawnY = burnLineY_Game + 100;
+
+                    // 每一帧生成一排粒子
+                    if (progress < 1.0) {
+                        for(let i=0; i<4; i++) {
+                            this.particles.push({
+                                x: Math.random() * this.pCanvas.width,
+                                y: spawnY + (Math.random() * 20 - 10), // 在线上浮动
+                                vx: (Math.random() - 0.5) * 2, // 左右微飘
+                                vy: -Math.random() * 2 - 1, // 向上飘
+                                life: 1.0,
+                                size: Math.random() * 6 + 2,
+                                color: Math.random() > 0.5 ? '#222' : '#ff4400' // 黑灰或火星
+                            });
+                        }
+                    } else {
+                        // 烧完了，等待粒子消散后重置
+                        if (this.particles.length === 0) {
+                           // 动画彻底结束
+                        }
+                    }
+                }
+
+                // 3. 更新粒子
+                for (let i = 0; i < this.particles.length; i++) {
+                    let p = this.particles[i];
+                    p.x += p.vx + Math.sin(p.y * 0.05) * 0.5;
+                    p.y += p.vy;
+                    p.life -= 0.01;
+                    p.size *= 0.98;
+
+                    this.pCtx.save();
+                    this.pCtx.globalAlpha = p.life;
+                    this.pCtx.fillStyle = p.color;
+                    this.pCtx.beginPath();
+                    this.pCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+                    this.pCtx.fill();
+                    this.pCtx.restore();
+
+                    if (p.life <= 0) {
+                        this.particles.splice(i, 1);
+                        i--;
+                    }
+                }
+
+                requestAnimationFrame(() => this.loop());
             }
-
-            // 限制
-            flight.y = Math.max(-10, Math.min(10, flight.y));
-            flight.altitude = Math.max(200, flight.altitude);
-
-            // 更新 HUD
-            document.getElementById('hud-alt').innerText = Math.floor(flight.altitude);
-            document.getElementById('hud-vspeed').innerText = Math.floor(-flight.pitch * 100);
-            let deg = Math.floor((flight.yaw * 180 / Math.PI) % 360);
-            if(deg<0) deg+=360;
-            document.getElementById('hud-yaw').innerText = deg + "°";
-
-            // 应用物体
-            if (swordGroup) {
-                swordGroup.position.set(flight.x, flight.y, 0);
-                swordGroup.rotation.set(0,0,0);
-                swordGroup.rotateY(flight.yaw);
-                swordGroup.rotateX(flight.pitch);
-                swordGroup.rotateZ(flight.roll);
-                swordGroup.position.y += Math.sin(Date.now()*0.002)*0.1;
-            }
-
-            // 地形
-            if (terrainMesh) {
-                terrainMesh.material.uniforms.time.value += 0.01;
-                terrainMesh.material.uniforms.altitude.value = flight.altitude;
-                terrainMesh.rotation.z = flight.yaw;
-            }
-
-            // 相机
-            camera.position.x += (flight.x * 0.4 - camera.position.x) * 0.05;
-            camera.position.y += (flight.y * 0.5 + 5 - camera.position.y) * 0.05;
-            if(swordGroup) camera.lookAt(swordGroup.position);
-
-            renderer.render(scene, camera);
         }
 
-        document.getElementById('file-input').addEventListener('change', (e) => {
-            const file = e.target.files[0]; if(!file)return;
-            const url = URL.createObjectURL(file);
-            new THREE.GLTFLoader().load(url, (gltf)=>{
-                if(swordGroup) scene.remove(swordGroup); swordGroup = new THREE.Group();
-                const m = gltf.scene;
-                const b = new THREE.Box3().setFromObject(m); const s = b.getSize(new THREE.Vector3());
-                const sc = 8.0/Math.max(s.x,s.y,s.z); m.scale.set(sc,sc,sc);
-                m.rotation.y = Math.PI; b.setFromObject(m); m.position.sub(b.getCenter(new THREE.Vector3()));
-                swordGroup.add(m); scene.add(swordGroup);
-            });
+        class GestureBrain {
+            constructor(renderer, tplSystem) {
+                this.r = renderer;
+                this.tpl = tplSystem;
+                this.state = 'IDLE'; 
+                this.drawStartTime = 0;
+                this.lastPos = null;
+                
+                this.vanishStartTime = 0;
+                this.VANISH_TRIGGER_TIME = decreeTime * 1000; 
+
+                this.palmHistory = [];
+                this.swipeCooldown = false;
+            }
+
+            dist(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
+
+            isSwordFinger(lm) {
+                const wrist = lm[0];
+                const ext = (t, p) => this.dist(t, wrist) > this.dist(p, wrist) * 1.1;
+                const fold = (t, p) => this.dist(t, wrist) < this.dist(p, wrist) * 1.2;
+                return ext(lm[8], lm[6]) && ext(lm[12], lm[10]) && fold(lm[16], lm[14]) && fold(lm[20], lm[18]);
+            }
+
+            detectSwipe(lm) {
+                if (this.swipeCooldown) return;
+                const palmX = lm[9].x;
+                const now = Date.now();
+                this.palmHistory.push({ x: palmX, time: now });
+                this.palmHistory = this.palmHistory.filter(h => now - h.time < 300);
+                if (this.palmHistory.length < 5) return;
+                const dx = this.palmHistory[this.palmHistory.length-1].x - this.palmHistory[0].x;
+                if (Math.abs(dx) > 0.2) {
+                    if (dx > 0) { this.tpl.prev(); this.r.setStatus("<< 上一个"); }
+                    else { this.tpl.next(); this.r.setStatus("下一个 >>"); }
+                    this.swipeCooldown = true; this.palmHistory = [];
+                    setTimeout(() => this.swipeCooldown = false, 500);
+                }
+            }
+
+            processHand(lm) {
+                // 如果处于等待消失状态，但手回来了，重置状态
+                if (this.state === 'WAITING_FOR_VANISH') {
+                    this.vanishStartTime = 0;
+                    this.r.updateVanishBar(0);
+                    this.r.setChargingState(false);
+                    this.state = 'DRAWING'; 
+                    this.r.setStatus("检测到手部，继续绘制...", "#f0c239");
+                    this.lastPos = null; // 关键修复：重置坐标，避免连线乱飞
+                }
+                
+                if(this.state === 'COOLDOWN') return;
+
+                const isSword = this.isSwordFinger(lm);
+                const tip = lm[8];
+                const cX = (1 - tip.x) * this.r.inkCanvas.width;
+                const cY = tip.y * this.r.inkCanvas.height;
+
+                if (isSword) {
+                    this.palmHistory = [];
+                    if (this.state === 'IDLE') {
+                        this.state = 'DRAWING';
+                        this.drawStartTime = Date.now();
+                        this.lastPos = {x: cX, y: cY};
+                        this.r.setStatus("画符中...", "#f0c239");
+                    } else if (this.state === 'DRAWING') {
+                        // 关键修复：检查 lastPos 是否存在
+                        if (this.lastPos) {
+                            this.r.drawSegment(this.lastPos, {x: cX, y: cY});
+                        }
+                        this.lastPos = {x: cX, y: cY};
+                    }
+                } else {
+                    if (this.state === 'IDLE') this.detectSwipe(lm);
+                    else if (this.state === 'DRAWING') {
+                        // 失去剑指但不算离手（可能是变手掌了），暂停绘制
+                        this.lastPos = null; 
+                    }
+                }
+            }
+
+            checkVanishing() {
+                if (this.state !== 'DRAWING' && this.state !== 'WAITING_FOR_VANISH') return;
+
+                const now = Date.now();
+
+                if (this.state === 'DRAWING') {
+                    this.state = 'WAITING_FOR_VANISH';
+                    this.vanishStartTime = now;
+                    this.r.setChargingState(true);
+                }
+
+                const elapsed = now - this.vanishStartTime;
+                const progress = Math.min(1, elapsed / this.VANISH_TRIGGER_TIME);
+                
+                this.r.updateVanishBar(progress);
+                const sec = (decreeTime - elapsed/1000).toFixed(1);
+                this.r.setStatus(`敕符蓄力中... ${sec}s`, `rgba(255, ${100 + progress*155}, ${100}, 1)`);
+
+                if (elapsed >= this.VANISH_TRIGGER_TIME) {
+                    this.triggerFinish();
+                }
+            }
+
+            triggerFinish() {
+                this.state = 'COOLDOWN';
+                this.r.updateVanishBar(0);
+                this.r.setChargingState(false);
+                this.r.setStatus("急急如律令！敕！", "#ff0000");
+                this.r.triggerBurn(); 
+                
+                setTimeout(() => {
+                    this.r.resetBurn();
+                    this.state = 'IDLE';
+                    this.lastPos = null; // 重置状态
+                    this.r.setStatus("准备就绪");
+                }, 3500); 
+            }
+        }
+
+        const tpl = new TemplateSystem();
+        const render = new RenderSystem();
+        const brain = new GestureBrain(render, tpl);
+        
+        const videoEl = document.getElementById('cam-video');
+        const overlayCanvas = document.getElementById('cam-overlay');
+        const overlayCtx = overlayCanvas.getContext('2d');
+        const camBox = document.getElementById('cam-box');
+
+        let isSkeleton = false;
+        document.getElementById('btn-toggle').onclick = function() {
+            isSkeleton = !isSkeleton;
+            camBox.style.borderColor = isSkeleton ? '#c92a2a' : '#444';
+            videoEl.style.opacity = isSkeleton ? 0 : 0.8;
+            this.innerText = isSkeleton ? "切换: 骨骼模式" : "切换: 实景模式";
+        };
+
+        function resizeOverlay() { overlayCanvas.width = camBox.offsetWidth; overlayCanvas.height = camBox.offsetHeight; }
+        window.addEventListener('resize', resizeOverlay);
+        resizeOverlay();
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+
+        hands.onResults(results => {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                drawConnectors(overlayCtx, lm, HAND_CONNECTIONS, {color: 'rgba(255,255,255,0.4)', lineWidth: 1});
+                drawLandmarks(overlayCtx, lm, {color: '#fff', radius: 1});
+                
+                brain.processHand(lm);
+            } else {
+                brain.checkVanishing();
+            }
         });
-        window.resetSword = createSevenStarSword;
+
+        const camera = new Camera(videoEl, { onFrame: async () => { await hands.send({image: videoEl}); }, width: 640, height: 480 });
+        camera.start();
+
     </script>
 </body>
 </html>
