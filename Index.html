@@ -215,27 +215,39 @@
                 this.vanishBox = document.getElementById('vanish-bar-box');
                 this.vanishFill = document.getElementById('vanish-fill');
                 
-                this.particles = [];
                 this.resize();
                 window.addEventListener('resize', () => this.resize());
                 
+                // 墨迹设置
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
-                this.ctx.strokeStyle = '#c92a2a';
-                this.ctx.lineWidth = 6;
+                this.ctx.strokeStyle = '#d93a3a';
+                this.ctx.shadowBlur = 2;
+                this.ctx.shadowColor = '#800';
+                this.ctx.lineWidth = 7;
 
                 this.particles = [];
                 this.isBurning = false;
                 this.burnStartTime = 0;
-                this.BURN_DURATION = ( decreeTime + 0.2 )* 1000;
-
+                this.BURN_DURATION = 2800; // 燃烧持续时间
+                
+                this.burnLayers = [this.paper, this.inkCanvas, this.tplLayer];
                 this.loop();
             }
 
             resize() {
                 const r = this.paper.getBoundingClientRect();
                 this.inkCanvas.width = r.width; this.inkCanvas.height = r.height;
-                this.pCanvas.width = r.width * decreeTime; this.pCanvas.height = r.height * decreeTime;
+                // 粒子画布更大，以容纳飘出的火焰
+                this.pCanvas.width = r.width * 1.4; this.pCanvas.height = r.height * 1.4;
+                
+                // 重置上下文
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.strokeStyle = '#d93a3a';
+                this.ctx.lineWidth = 7;
+                this.ctx.shadowBlur = 2;
+                this.ctx.shadowColor = '#800';
             }
 
             drawSegment(p1, p2) {
@@ -253,61 +265,19 @@
 
             triggerBurn() {
                 this.setChargingState(false);
-                this.paper.classList.add('burn-anim');
-                this.inkCanvas.classList.add('burn-anim');
-                this.tplLayer.classList.add('burn-anim');
-                this.spawnAshParticles();
+                this.isBurning = true;
+                this.burnStartTime = Date.now();
             }
 
             resetBurn() {
-                [this.paper, this.inkCanvas, this.tplLayer].forEach(el => {
-                    el.classList.remove('burn-anim');
-                    void el.offsetWidth;
+                this.isBurning = false;
+                this.burnLayers.forEach(el => {
+                    el.style.webkitMaskImage = '';
+                    el.style.maskImage = '';
                     el.style.opacity = 1;
                 });
                 this.ctx.clearRect(0, 0, this.inkCanvas.width, this.inkCanvas.height);
-            }
-
-            spawnAshParticles() {
-                let spawnedCount = 0;
-                const totalParticles = 600;
-                const interval = setInterval(() => {
-                    for(let i=0; i<8; i++) {
-                        this.particles.push({
-                            x: Math.random() * this.pCanvas.width,
-                            y: this.pCanvas.height + Math.random() * 50, 
-                            vx: (Math.random() - 0.5) * 3,
-                            vy: -Math.random() * 3 - 2,
-                            life: 1.0,
-                            size: Math.random() * 8 + 2,
-                            color: Math.random() > 0.6 ? '#c92a2a' : (Math.random() > 0.4 ? '#ff8800' : '#111')
-                        });
-                    }
-                    spawnedCount += 8;
-                    if(spawnedCount >= totalParticles) clearInterval(interval);
-                }, 30); 
-                this.animateParticles();
-            }
-
-            animateParticles() {
-                if(this.particles.length === 0) return;
-                this.pCtx.clearRect(0, 0, this.pCanvas.width, this.pCanvas.height);
-                for(let i=0; i<this.particles.length; i++) {
-                    let p = this.particles[i];
-                    p.x += p.vx + Math.sin(p.y * 0.01) * 1; 
-                    p.y += p.vy; 
-                    p.life -= 0.01; 
-                    p.size *= 0.98;
-                    this.pCtx.save();
-                    this.pCtx.globalAlpha = p.life;
-                    this.pCtx.fillStyle = p.color;
-                    this.pCtx.beginPath();
-                    this.pCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
-                    this.pCtx.fill();
-                    this.pCtx.restore();
-                    if(p.life <= 0) { this.particles.splice(i, 1); i--; }
-                }
-                requestAnimationFrame(() => this.animateParticles());
+                this.particles = []; // 清空粒子
             }
 
             updateVanishBar(pct) {
@@ -320,11 +290,83 @@
                 }
             }
             
-            setStatus(text, color='#fff') { this.statusEl.innerText = text; this.statusEl.style.color = color; }
+            setStatus(text, color='#fff') { 
+                this.statusEl.innerText = text; 
+                this.statusEl.style.color = color;
+                if(color !== '#fff') this.statusEl.style.textShadow = `0 0 20px ${color}`;
+                else this.statusEl.style.textShadow = '0 0 10px #000';
+            }
+            
+            // --- 核心：真火粒子生成 ---
+            spawnFireParticles(yPos, width) {
+                const count = 12; // 每帧生成的粒子数
+                // 坐标转换：从 GameArea 坐标转到 ParticleCanvas 坐标
+                // ParticleCanvas 偏移了 -20%, 宽高 140%
+                // offsetX = pCanvas.width * (20/140)
+                const offsetX = this.pCanvas.width * (0.2 / 1.4);
+                const offsetY = this.pCanvas.height * (0.2 / 1.4);
+                
+                // GameArea 高度对应比例
+                const scaleY = (this.pCanvas.height / 1.4) / 580; 
+                const spawnY = offsetY + yPos * scaleY;
+                
+                const gameW = this.inkCanvas.width;
+                const scaleX = (this.pCanvas.width / 1.4) / gameW;
+
+                for(let i=0; i<count; i++) {
+                    const r = Math.random();
+                    // 粒子类型分布：
+                    // 0.0 - 0.4: 主火焰 (大，橙红)
+                    // 0.4 - 0.6: 核心火焰 (亮黄白)
+                    // 0.6 - 0.9: 烟雾/热浪
+                    // 0.9 - 1.0: 火星 (极快，亮)
+
+                    let p = {
+                        x: offsetX + (Math.random() * gameW) * scaleX,
+                        y: spawnY + (Math.random() * 20 - 10), 
+                        vx: (Math.random() - 0.5) * 1.5,
+                        vy: 0,
+                        life: 1.0,
+                        maxLife: 1.0,
+                        size: 0,
+                        type: 'fire'
+                    };
+
+                    if (r < 0.5) { // 主火焰
+                        p.type = 'flame';
+                        p.vy = -Math.random() * 3 - 2;
+                        p.size = Math.random() * 25 + 15;
+                        p.life = Math.random() * 0.5 + 0.3;
+                        p.color = `255, ${Math.floor(Math.random()*100)}, 0`; // 橙红
+                    } else if (r < 0.7) { // 核心亮火
+                        p.type = 'core';
+                        p.vy = -Math.random() * 4 - 3;
+                        p.size = Math.random() * 20 + 10;
+                        p.life = Math.random() * 0.4 + 0.2;
+                        p.color = `255, ${200 + Math.floor(Math.random()*55)}, 150`; // 白黄
+                    } else if (r < 0.9) { // 烟
+                        p.type = 'smoke';
+                        p.vx = (Math.random() - 0.5) * 3;
+                        p.vy = -Math.random() * 2 - 1;
+                        p.size = Math.random() * 30 + 10;
+                        p.life = Math.random() * 0.8 + 0.4;
+                        p.color = '50, 50, 50'; // 黑灰
+                    } else { // 火星
+                        p.type = 'spark';
+                        p.vx = (Math.random() - 0.5) * 6;
+                        p.vy = -Math.random() * 6 - 4;
+                        p.size = Math.random() * 3 + 1;
+                        p.life = Math.random() * 0.6 + 0.3;
+                        p.color = '255, 255, 200';
+                    }
+                    this.particles.push(p);
+                }
+            }
+
             loop() {
+                // 1. 清空画布
                 this.pCtx.clearRect(0, 0, this.pCanvas.width, this.pCanvas.height);
 
-                // 1. 处理燃烧
                 if (this.isBurning) {
                     const elapsed = Date.now() - this.burnStartTime;
                     const progress = Math.min(1, elapsed / this.BURN_DURATION);
@@ -336,69 +378,87 @@
                     const burnYPct = 100 - (progress * 100); 
                     
                     // 应用 Mask
-                    const maskCSS = `linear-gradient(to top, black ${burnYPct}%, transparent ${burnYPct + 10}%)`;
+                    const maskCSS = `linear-gradient(to bottom, black ${burnYPct}%, transparent ${burnYPct}%)`;
                     this.burnLayers.forEach(el => {
                         el.style.webkitMaskImage = maskCSS;
                         el.style.maskImage = maskCSS;
                     });
-
-                    // 2. 在燃烧线上生成粒子
-                    // 燃烧线在 Canvas 中的实际 Y 坐标 (注意粒子Canvas有偏移)
-                    // GameArea 高度 580. 粒子 Canvas top -100.
-                    // 燃烧线 Y (相对于 GameArea) = 580 * (burnYPct / 100)
-                    const gameAreaH = this.inkCanvas.height;
-                    const burnLineY_Game = gameAreaH * (burnYPct / 100);
-                    
-                    // 映射到粒子 Canvas 坐标 (加偏移 100)
-                    const spawnY = burnLineY_Game + 100;
-
-                    // 每一帧生成一排粒子
+                    // 2. 生成火焰粒子
                     if (progress < 1.0) {
-                        for(let i=0; i<4; i++) {
-                            this.particles.push({
-                                x: Math.random() * this.pCanvas.width,
-                                y: spawnY + (Math.random() * 20 - 10), // 在线上浮动
-                                vx: (Math.random() - 0.5) * 2, // 左右微飘
-                                vy: -Math.random() * 2 - 1, // 向上飘
-                                life: 1.0,
-                                size: Math.random() * 6 + 2,
-                                color: Math.random() > 0.5 ? '#222' : '#ff4400' // 黑灰或火星
-                            });
-                        }
+                        const gameH = 580;
+                        const lineY = gameH * (burnYPct / 100);
+                        this.spawnFireParticles(lineY, gameH);
                     } else {
-                        // 烧完了，等待粒子消散后重置
+                        // 燃烧结束，等待粒子消失
                         if (this.particles.length === 0) {
-                           // 动画彻底结束
+                            // 彻底结束
                         }
                     }
                 }
 
-                // 3. 更新粒子
+                // 3. 渲染粒子 (真火核心渲染逻辑)
+                // 关键：使用 'lighter' (Additive Blending) 实现发光叠加
+                this.pCtx.globalCompositeOperation = 'lighter';
+
                 for (let i = 0; i < this.particles.length; i++) {
                     let p = this.particles[i];
-                    p.x += p.vx + Math.sin(p.y * 0.05) * 0.5;
+                    
+                    // 物理更新
+                    p.x += p.vx + Math.sin(Date.now() * 0.01 + p.y * 0.02) * 0.5; // 湍流扰动
                     p.y += p.vy;
-                    p.life -= 0.01;
-                    p.size *= 0.98;
+                    p.life -= 0.02;
+                    p.size *= 0.95; // 逐渐变小
 
-                    this.pCtx.save();
-                    this.pCtx.globalAlpha = p.life;
-                    this.pCtx.fillStyle = p.color;
+                    if (p.life <= 0 || p.size < 0.5) {
+                        this.particles.splice(i, 1);
+                        i--;
+                        continue;
+                    }
+
+                    // 渲染逻辑
+                    if (p.type === 'spark') {
+                        // 火星：画实心亮圆，带拖尾感
+                        this.pCtx.fillStyle = `rgba(${p.color}, ${p.life})`;
+                        this.pCtx.beginPath();
+                        this.pCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+                        this.pCtx.fill();
+                    } else if (p.type === 'smoke') {
+                        // 烟雾不需要高亮叠加，放到后面画，或者这里单独处理
+                        // 为了简单，这里烟也带一点光，或者我们可以切换 globalCompositeOperation
+                        // 但频繁切换影响性能。这里让烟雾也作为一种暗红热气处理
+                        let alpha = p.life * 0.4;
+                        this.createGradient(p, alpha);
+                    } else {
+                        // 火焰和核心：使用径向渐变
+                        let alpha = p.life;
+                        if (p.type === 'core') alpha = p.life * 0.8;
+                        this.createGradient(p, alpha);
+                    }
+                }
+                
+                // 恢复默认混合模式
+                this.pCtx.globalCompositeOperation = 'source-over';
+                
+                requestAnimationFrame(() => this.loop());
+            }
+
+            createGradient(p, alpha) {
+                // 创建径向渐变：中心亮 -> 边缘透明
+                // 这模拟了火球的形态
+                try {
+                    let grad = this.pCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+                    grad.addColorStop(0, `rgba(${p.color}, ${alpha})`);
+                    grad.addColorStop(0.4, `rgba(${p.color}, ${alpha * 0.5})`);
+                    grad.addColorStop(1, `rgba(${p.color}, 0)`);
+                    
+                    this.pCtx.fillStyle = grad;
                     this.pCtx.beginPath();
                     this.pCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
                     this.pCtx.fill();
-                    this.pCtx.restore();
-
-                    if (p.life <= 0) {
-                        this.particles.splice(i, 1);
-                        i--;
-                    }
-                }
-
-                requestAnimationFrame(() => this.loop());
+                } catch(e) {}
             }
         }
-        
+       
         class GestureBrain {
             constructor(renderer, tplSystem) {
                 this.r = renderer;
