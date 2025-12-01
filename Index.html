@@ -1,19 +1,43 @@
+--- START OF FILE 画符4_修复版.html ---
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>剑指画符</title>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <!-- 移除了不再需要的 camera_utils -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
     <style>
         :root { --paper-w: 330px; --paper-h: 580px; }
-        body { margin: 0; background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: "KaiTi", serif; }
+        
+        /* 修改1: 移除 body 的 flex 布局，防止因非法 DOM 元素导致的布局偏移 */
+        body { 
+            margin: 0; 
+            background: #111; 
+            height: 100vh; 
+            overflow: hidden; 
+            font-family: "KaiTi", serif; 
+            position: relative; /* 为绝对定位子元素提供参考 */
+        }
 
-        #game-area { position: relative; width: var(--paper-w); height: var(--paper-h); perspective: 1000px; transition: transform 0.1s; }
+        /* 修改2: 使用绝对定位强制居中 */
+        #game-area { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            width: var(--paper-w); 
+            height: var(--paper-h); 
+            perspective: 1000px; 
+            /* 使用 translate 抵消自身的 50% 宽高，实现完美居中 */
+            transform: translate(-50%, -50%); 
+            /* 注意：因为这里使用了 transform，如果要对 #game-area 本身做动画，需要嵌套一层容器，
+               但原本的动画是作用在 #paper-layer 子元素上的，所以这里安全。 */
+            z-index: 5;
+        }
 
         /* 1. 符纸层 */
         #paper-layer {
@@ -113,8 +137,7 @@
     <div id="ui-layer">
         <button id="btn-toggle">切换: 实景模式</button>
         <div id="status">系统初始化中...</div>
-        <div id="guide-hint">🖐️ 左右挥手切换模板 | ✌️ 剑指入摄像头内开始画符<br>
-            <!-- 画完后将手移出画面即可敕符 -->
+        <div id="guide-hint">🖐️ 左右挥手切换模板<br>✌️ 剑指入摄像头内开始画符<br>
             画完后将手快速移向摄像头
         </div>
         <div id="cam-box">
@@ -124,7 +147,6 @@
     </div>
 
     <script>
-        // 敕令时间
         var decreeTime = 0.8
 
         const TEMPLATES = [
@@ -177,16 +199,8 @@
                 this.isBurning = false;
                 this.burnStartTime = 0;
                 this.BURN_DURATION = ( decreeTime + 0.2 )* 1000;
-                // // 需要燃烧的层
-                // this.burnLayers = [
-                //     document.getElementById('paper-layer'),
-                //     document.getElementById('template-layer'),
-                //     this.inkCanvas
-                // ];
 
-                // 启动粒子循环
                 this.loop();
-
             }
 
             resize() {
@@ -196,7 +210,7 @@
             }
 
             drawSegment(p1, p2) {
-                if (!p1 || !p2) return; // 防止空指针报错
+                if (!p1 || !p2) return;
                 this.ctx.beginPath();
                 this.ctx.moveTo(p1.x, p1.y);
                 this.ctx.quadraticCurveTo((p1.x + p2.x)/2, (p1.y + p2.y)/2, p2.x, p2.y);
@@ -219,7 +233,7 @@
             resetBurn() {
                 [this.paper, this.inkCanvas, this.tplLayer].forEach(el => {
                     el.classList.remove('burn-anim');
-                    void el.offsetWidth; // 触发重绘
+                    void el.offsetWidth;
                     el.style.opacity = 1;
                 });
                 this.ctx.clearRect(0, 0, this.inkCanvas.width, this.inkCanvas.height);
@@ -278,7 +292,6 @@
             }
             
             setStatus(text, color='#fff') { this.statusEl.innerText = text; this.statusEl.style.color = color; }
-                        // 每一帧的循环
             loop() {
                 this.pCtx.clearRect(0, 0, this.pCanvas.width, this.pCanvas.height);
 
@@ -356,7 +369,7 @@
                 requestAnimationFrame(() => this.loop());
             }
         }
-
+        
         class GestureBrain {
             constructor(renderer, tplSystem) {
                 this.r = renderer;
@@ -398,14 +411,13 @@
             }
 
             processHand(lm) {
-                // 如果处于等待消失状态，但手回来了，重置状态
                 if (this.state === 'WAITING_FOR_VANISH') {
                     this.vanishStartTime = 0;
                     this.r.updateVanishBar(0);
                     this.r.setChargingState(false);
                     this.state = 'DRAWING'; 
                     this.r.setStatus("检测到手部，继续绘制...", "#f0c239");
-                    this.lastPos = null; // 关键修复：重置坐标，避免连线乱飞
+                    this.lastPos = null;
                 }
                 
                 if(this.state === 'COOLDOWN') return;
@@ -423,7 +435,6 @@
                         this.lastPos = {x: cX, y: cY};
                         this.r.setStatus("画符中...", "#f0c239");
                     } else if (this.state === 'DRAWING') {
-                        // 关键修复：检查 lastPos 是否存在
                         if (this.lastPos) {
                             this.r.drawSegment(this.lastPos, {x: cX, y: cY});
                         }
@@ -432,7 +443,6 @@
                 } else {
                     if (this.state === 'IDLE') this.detectSwipe(lm);
                     else if (this.state === 'DRAWING') {
-                        // 失去剑指但不算离手（可能是变手掌了），暂停绘制
                         this.lastPos = null; 
                     }
                 }
@@ -471,7 +481,7 @@
                 setTimeout(() => {
                     this.r.resetBurn();
                     this.state = 'IDLE';
-                    this.lastPos = null; // 重置状态
+                    this.lastPos = null;
                     this.r.setStatus("准备就绪");
                 }, 3500); 
             }
@@ -515,8 +525,46 @@
             }
         });
 
-        const camera = new Camera(videoEl, { onFrame: async () => { await hands.send({image: videoEl}); }, width: 640, height: 480 });
-        camera.start();
+        // --- 核心修改：使用 navigator.mediaDevices 替代 Camera 类 ---
+
+        async function startCamera() {
+            try {
+                // 获取摄像头流
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user' // 优先使用前置摄像头
+                    },
+                    audio: false
+                });
+
+                videoEl.srcObject = stream;
+                
+                // 等待视频元数据加载完成后播放
+                videoEl.onloadedmetadata = () => {
+                    videoEl.play();
+                    // 开始将视频帧送入 hands 处理的循环
+                    requestAnimationFrame(sendVideoFrame);
+                    render.setStatus("系统就绪，请伸出剑指");
+                };
+
+            } catch (err) {
+                console.error("Camera access error:", err);
+                render.setStatus("绝地天通 — 无法访问摄像头", "red");
+            }
+        }
+
+        async function sendVideoFrame() {
+            if (!videoEl.paused && !videoEl.ended) {
+                // 将视频元素发送给 MediaPipe
+                await hands.send({image: videoEl});
+            }
+            requestAnimationFrame(sendVideoFrame);
+        }
+
+        // 启动
+        startCamera();
 
     </script>
 </body>
