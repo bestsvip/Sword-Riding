@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>实时语音识别 - Web Speech API</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      min-height: 60px;
+      border: 1px solid #ddd;
+      word-break: break-word;
+    }
+    #interim {
+      color: #666;
+      font-style: italic;
+    }
+    button {
+      display: block;
+      margin: 10px auto;
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .error {
+      color: red;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🗣️ 实时语音识别演示</h1>
+  <button id="startBtn">开始说话</button>
+  <button id="stopBtn" disabled>停止识别</button>
+  
+  <div id="result">
+    <div id="final"></div>
+    <div id="interim"></div>
+  </div>
+  <div id="errorMsg" class="error"></div>
+
+  <script>
+    // 检查浏览器是否支持 Web Speech API
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      document.getElementById('errorMsg').textContent = '❌ 您的浏览器不支持 Web Speech API。请使用 Chrome 或 Edge 浏览器。';
+      document.getElementById('startBtn').disabled = true;
+    } else {
+      const recognition = new SpeechRecognition();
+      
+      // 配置识别参数
+      recognition.lang = 'zh-CN';          // 中文普通话
+      recognition.interimResults = true;   // 返回临时结果（用于实时显示）
+      recognition.continuous = true;       // 连续识别（不停止）
+
+      const finalTranscript = document.getElementById('final');
+      const interimTranscript = document.getElementById('interim');
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const errorMsg = document.getElementById('errorMsg');
+
+      let recognizing = false;
+
+      recognition.onstart = () => {
+        recognizing = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        errorMsg.textContent = '';
+      };
+
+      recognition.onresult = (event) => {
+        let interim = '';
+        let final = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            final += transcript;
+          } else {
+            interim += transcript;
+          }
+        }
+
+        // 更新 UI
+        interimTranscript.textContent = interim;
+        if (final) {
+          finalTranscript.textContent += final + ' ';
+        }
+      };
+
+      recognition.onerror = (event) => {
+        errorMsg.textContent = `⚠️ 语音识别出错：${event.error}`;
+        if (event.error === 'not-allowed') {
+          errorMsg.textContent += '（请允许麦克风权限）';
+        }
+        stopRecognition();
+      };
+
+      recognition.onend = () => {
+        // 如果是主动停止，则不自动重启
+        if (recognizing) {
+          // 可选：自动重新开始（实现“永远监听”）
+          // recognition.start();
+        }
+        stopRecognition();
+      };
+
+      function startRecognition() {
+        try {
+          recognition.start();
+        } catch (e) {
+          errorMsg.textContent = '启动识别失败：' + e.message;
+        }
+      }
+
+      function stopRecognition() {
+        recognizing = false;
+        recognition.stop();
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+
+      // 绑定按钮事件
+      startBtn.addEventListener('click', startRecognition);
+      stopBtn.addEventListener('click', stopRecognition);
+    }
+  </script>
+</body>
+</html>
